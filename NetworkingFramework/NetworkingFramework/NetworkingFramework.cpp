@@ -33,7 +33,7 @@ using std::cout;
 using std::endl;
 
 //------------ Defines ------------//
-#define TCP_CHAT_BUFFER_SIZE (512)
+#define TCP_CHAT_BUFFER_SIZE (1024)
 #define UDP_PACKET_MAX_CAPACITY (1300)
 
 //------------ TCP ------------//
@@ -170,11 +170,23 @@ struct TCPChatClient
 			cout << "Set non blocking failed." << endl;
 			return;
 		}
+		char buffer[1024];
+
+		// Send out a packet
+		string sendData = "TCP MESSAGE";
+		int sendBytes = mSocket->Send(sendData.c_str(), sendData.size());
+		cout << "Client Send: " << sendData << endl;
+
 		while (true)
 		{
 			// TODO : Functionality
 			// Option 1 - Send (char* confirmation, size)
 			// Option 2 - Receive(); 
+			if (mSocket->Receive(buffer, 1024) > 0)
+			{
+				string received(buffer);
+				cout << "Client Received: " << received << endl;
+			}
 		}
 	}
 	void Send(char* inData, unsigned bytes)
@@ -197,27 +209,6 @@ struct TCPChatClient
 	shared_ptr<TCPSocket> mSocket;
 	u_long mIPAddress;
 	u_short mPort;
-};
-
-// Incomplete!
-struct TCPChatServer
-{
-	TCPChatServer(u_short port)
-	{
-		if (TCPSocketUtil::TCPStartup != 0) { return; }
-		mSocket = TCPSocketUtil::CreateSocket(port);
-		if (mSocket.get() == nullptr) { return; }
-	}
-	void Run()
-	{
-		cout << "Server initialized." << endl;
-		if (mSocket->Listen() == SOCKET_ERROR)  { return; }
-		//		struct sockaddr_in sockAddress;
-
-		// TODO Implement.
-	}
-
-	shared_ptr<TCPSocket> mSocket;
 };
 
 //------------ UDP ------------//
@@ -302,19 +293,36 @@ struct PacketBuffer
 struct UDPSocket
 {
 	UDPSocket(SOCKET s) { mSocket = s; }
-	// Sends data to the address- returns how many bytes were sent, or an error code.
-	int SendTo(const PacketBuffer* inData, const sockaddr& inToAddress);
-	// Receives data up to inLength in size. Returns the number of bytes recieved, 
-	// or an error code. Returns the sender's address in outFromAddress.
-	int ReceiveFrom(PacketBuffer* outData, sockaddr& outAddress);
+
+	/* Connects to a socket. */
+	int Connect(u_long ipAddress, u_short port)
+	{
+		struct sockaddr_in sockAddress;
+		sockAddress.sin_family = AF_INET;
+		sockAddress.sin_port = htons(port);
+		sockAddress.sin_addr.S_un.S_addr = ipAddress;
+		memset(sockAddress.sin_zero, 0, 8);
+		return connect(mSocket, reinterpret_cast<sockaddr*>(&sockAddress), sizeof(sockAddress));
+	}
+
+	int Send(const void* inData, uint32_t length)
+	{
+		return send(mSocket, reinterpret_cast<const char*>(inData), length, 0);
+	}
+
+	int Recv(void* inData, uint32_t length)
+	{
+		return recv(mSocket, reinterpret_cast<char*>(inData), length, 0);
+
+	}
 
 	// Sends data to the address- returns how many bytes were sent, or an error code.
-	int UDPSocket::SendTo(const void* inData, uint32_t inLength, const sockaddr& inToAddress) {
+	int SendTo(const void* inData, uint32_t inLength, const sockaddr& inToAddress) {
 		return sendto(mSocket, reinterpret_cast<const char*>(inData), inLength, 0, &inToAddress, sizeof(inToAddress));
 	}
 	// Receives data up to inLength in size. Returns the number of bytes recieved, 
 	// or an error code. Returns the sender's address in outFromAddress.
-	int UDPSocket::RecvFrom(void* outData, uint32_t inLength, sockaddr& outFromAddress) {
+	int RecvFrom(void* outData, uint32_t inLength, sockaddr& outFromAddress) {
 		int sizeOfOut = sizeof(outFromAddress);
 		return recvfrom(mSocket, reinterpret_cast<char*>(outData), inLength, 0, &outFromAddress, &sizeOfOut);
 	}
@@ -323,7 +331,7 @@ struct UDPSocket
 		return error;
 	}
 
-	int UDPSocket::SetNonBlocking(bool inShouldBlock) {
+	int SetNonBlocking(bool inShouldBlock) {
 		// If inShouldBlock = true then set non-blocking to true;
 		u_long blocking = !inShouldBlock;
 		return ioctlsocket(mSocket, FIONBIO, &blocking);
@@ -334,7 +342,7 @@ struct UDPSocket
 
 struct UDPSocketUtil
 {
-	shared_ptr<UDPSocket> Create(uint16_t inPortNum)
+	static shared_ptr<UDPSocket> Create(uint16_t inPortNum)
 	{
 		SOCKET s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 		if (s == INVALID_SOCKET)
@@ -370,11 +378,65 @@ struct UDPSocketUtil
 	}
 };
 
+struct UDPChatClient
+{
+	UDPChatClient(u_long ipAddress, u_short portNum)
+	{
+		if (UDPSocketUtil::UDPStartup() != 0) { return; }
+		mSocket = UDPSocketUtil::Create(0);
+		if (mSocket.get() == nullptr) { return; }
+		mIPAddress = ipAddress;
+		mPort = portNum;
+	}
+
+	void Run()
+	{
+		// TODO : Functionality
+		// Option 1 - Send (char* confirmation, size)
+		// Option 2 - Receive();
+		char buffer[1024];
+
+		// Send out a packet
+		string sendData = "UDP MESSAGE";
+		int sendBytes = mSocket->SendTo(&sendData,sendData.size,  )
+		cout << "Client Send: " << sendData << endl;
+
+		while (true)
+		{ 
+			if (mSocket->Receive(buffer, 1024) > 0)
+			{
+				string received(buffer);
+				cout << "Client Received: " << received << endl;
+			}
+		}
+	}
+	void Send(char* inData, unsigned bytes)
+	{
+		// TODO : Manipulate the data if you need to.
+		int sendBytes = mSocket->Send(inData, bytes);
+		cout << "Client - Sent " << to_string(sendBytes) << " bytes to the server." << endl;
+	}
+	void Receive(char* outData)
+	{
+		int bytes = mSocket->Receive(outData, TCP_CHAT_BUFFER_SIZE);
+		if (bytes > 0)
+		{
+			cout << "Client - Received " << bytes << " bytes from the server." << endl;
+			// TODO : Do something with the data if you need to.
+
+		}
+	}
+
+	shared_ptr<UDPSocket> mSocket;
+	u_long mIPAddress;
+	u_short mPort;
+};
+
 class IPv4Util
 {
 public:
 	/* Tested and worked. */
-	static u_long IPStringToLong(string ipAddress)
+	static u_long IPStringToLong(const string& ipAddress)
 	{
 		struct in_addr sa;
 		{ inet_pton(AF_INET, ipAddress.c_str(), &(sa)); }
@@ -388,6 +450,11 @@ public:
 		sa.sin_addr.S_un.S_addr = ipAddress;
 		{ inet_ntop(AF_INET, &(sa.sin_addr), str, INET_ADDRSTRLEN); }
 		return string(str);
+	}
+
+	static u_short PortStringToShort(const string& portNum)
+	{
+		return std::stoul(portNum.c_str(), nullptr, 10);
 	}
 
 	static void TEST()
@@ -405,6 +472,14 @@ public:
 int _tmain(int argc, _TCHAR* argv[])
 {
 
+	/* Test sending via TCP */
+	string local_host = "127.0.0.1";
+	u_long ip = IPv4Util::IPStringToLong(local_host);
+	u_short port = IPv4Util::PortStringToShort("4001");
+
+	/*TCPChatClient tcpClient(ip, port);
+	tcpClient.Run();*/
+	
 
 
 	while (true){};
