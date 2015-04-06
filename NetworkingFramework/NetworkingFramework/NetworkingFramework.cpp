@@ -1,5 +1,16 @@
+/*
+	Author: Brian Y. Chen
+	Date:   4/6/2015
+	
+	This application is one file that contains functionality for both UDP
+	and TCP send/recv as well as other functionalities pertaining to
+	networking.
+
+	IMPORTANT: This file is granted to be used in the University of Southern
+	California CSCI 423 Spring 2015 midterm and is forbidden to be used 
+	elsewhere unless given explicit consent from the author, Brian Y. Chen.
+*/
 // NativeConsoles.cpp : Defines the entry point for the console application.
-//
 
 //------------ Base Includes ------------ //
 #include "stdafx.h"
@@ -66,9 +77,9 @@ struct TCPSocket
 	{
 		int bytes = recv(mSocket, buffer, length, 0);
 		// Null terminator @ end of buffer for chat client.
-		if (bytes == length) { buffer[length - 1] = '\0'; } 
+		if (bytes == length) { buffer[length - 1] = '\0'; }
 		// This is the more common code segment.
-		else if (bytes < length && bytes > 0) { buffer[bytes] = '\0'; } 
+		else if (bytes < length && bytes > 0) { buffer[bytes] = '\0'; }
 		return bytes;
 	}
 
@@ -168,7 +179,7 @@ struct TCPChatClient
 	}
 	void Send(char* inData, unsigned bytes)
 	{
-		 // TODO : Manipulate the data if you need to.
+		// TODO : Manipulate the data if you need to.
 		int sendBytes = mSocket->Send(inData, bytes);
 		cout << "Client - Sent " << to_string(sendBytes) << " bytes to the server." << endl;
 	}
@@ -201,7 +212,7 @@ struct TCPChatServer
 	{
 		cout << "Server initialized." << endl;
 		if (mSocket->Listen() == SOCKET_ERROR)  { return; }
-//		struct sockaddr_in sockAddress;
+		//		struct sockaddr_in sockAddress;
 
 		// TODO Implement.
 	}
@@ -230,10 +241,10 @@ struct PacketBuffer
 	}
 
 	/* How to use:
-	1. Have PacketBuffer mOutBuffer in your UDPChatClient 
+	1. Have PacketBuffer mOutBuffer in your UDPChatClient
 	2. Also store your ip, port, and sockaddr_in mConnectedTo.
 	3. Every frame (client), reset mOutBuffer.
-	4. Then call mSocket->ReceiveFrom(mOutBuffer, (sockaddr*)mConnectedTo) 
+	4. Then call mSocket->ReceiveFrom(mOutBuffer, (sockaddr*)mConnectedTo)
 	5. Then you can look inside of the buffer and do things.
 	6. One way to do that is use a strncmp("compare me", mBuffer, size);
 	*/
@@ -270,7 +281,7 @@ struct PacketBuffer
 			return false;
 		}
 	}
-	
+
 	bool ReadString(std::string& outString) {
 		uint16_t length;
 		if (ReadData(&length, 2)) {
@@ -326,7 +337,7 @@ struct UDPSocketUtil
 	shared_ptr<UDPSocket> Create(uint16_t inPortNum)
 	{
 		SOCKET s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-		if (s == INVALID_SOCKET) 
+		if (s == INVALID_SOCKET)
 		{
 			cout << "UDPSocketUtil::Create() - error invalid socket." << endl;
 			return shared_ptr<UDPSocket>();
@@ -347,7 +358,7 @@ struct UDPSocketUtil
 
 		return shared_ptr<UDPSocket>(new UDPSocket(s));
 	}
-	
+
 	static int UDPStartup()
 	{
 		struct WSAData data;
@@ -393,7 +404,7 @@ public:
 
 int _tmain(int argc, _TCHAR* argv[])
 {
-	
+
 
 
 	while (true){};

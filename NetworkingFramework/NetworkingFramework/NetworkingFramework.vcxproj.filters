@@ -29,7 +29,7 @@
     <ClCompile Include="stdafx.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="NativeConsoles.cpp">
+    <ClCompile Include="NetworkingFramework.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
