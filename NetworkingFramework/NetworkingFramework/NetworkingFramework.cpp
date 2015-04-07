@@ -32,9 +32,46 @@ using std::string;
 using std::cout;
 using std::endl;
 
+
 //------------ Defines ------------//
 #define TCP_CHAT_BUFFER_SIZE (1024)
-#define UDP_PACKET_MAX_CAPACITY (1300)
+#define UDP_PACKET_MAX_CAPACITY (1024)
+
+
+class IPv4Util
+{
+public:
+	/* Tested and worked. */
+	static u_long IPStringToLong(const string& ipAddress)
+	{
+		struct in_addr sa;
+		{ inet_pton(AF_INET, ipAddress.c_str(), &(sa)); }
+		return sa.S_un.S_addr;
+	}
+	/* Tested and worked. */
+	static string IPLongToString(u_long ipAddress)
+	{
+		char str[INET_ADDRSTRLEN];
+		struct sockaddr_in sa;
+		sa.sin_addr.S_un.S_addr = ipAddress;
+		{ inet_ntop(AF_INET, &(sa.sin_addr), str, INET_ADDRSTRLEN); }
+		return string(str);
+	}
+
+	static u_short PortStringToShort(const string& portNum)
+	{
+		return static_cast<u_short>(std::stoul(portNum.c_str(), nullptr, 10));
+	}
+
+	static void TEST()
+	{
+		string local_host = "127.0.0.1";
+		cout << "Old IP: " << local_host << endl;
+		u_long ip = IPv4Util::IPStringToLong(local_host);
+		cout << "ULong IP: " << to_string(ip) << endl;
+		cout << "New IP: " << IPv4Util::IPLongToString(ip) << endl;
+	}
+};
 
 //------------ TCP ------------//
 struct TCPSocket
@@ -193,7 +230,7 @@ struct TCPChatClient
 	{
 		// TODO : Manipulate the data if you need to.
 		int sendBytes = mSocket->Send(inData, bytes);
-		cout << "Client - Sent " << to_string(sendBytes) << " bytes to the server." << endl;
+		cout << "TCP Client - Sent " << to_string(sendBytes) << " bytes to the server." << endl;
 	}
 	void Receive(char* outData)
 	{
@@ -212,6 +249,8 @@ struct TCPChatClient
 };
 
 //------------ UDP ------------//
+/* Most likely won't be using Packet Buffer, but just in case we need
+   to implement one. */
 struct PacketBuffer
 {
 	PacketBuffer()
@@ -292,18 +331,7 @@ struct PacketBuffer
 };
 struct UDPSocket
 {
-	UDPSocket(SOCKET s) { mSocket = s; }
-
-	/* Connects to a socket. */
-	int Connect(u_long ipAddress, u_short port)
-	{
-		struct sockaddr_in sockAddress;
-		sockAddress.sin_family = AF_INET;
-		sockAddress.sin_port = htons(port);
-		sockAddress.sin_addr.S_un.S_addr = ipAddress;
-		memset(sockAddress.sin_zero, 0, 8);
-		return connect(mSocket, reinterpret_cast<sockaddr*>(&sockAddress), sizeof(sockAddress));
-	}
+	UDPSocket(SOCKET s) { mSocket = s;}
 
 	int Send(const void* inData, uint32_t length)
 	{
@@ -313,7 +341,6 @@ struct UDPSocket
 	int Recv(void* inData, uint32_t length)
 	{
 		return recv(mSocket, reinterpret_cast<char*>(inData), length, 0);
-
 	}
 
 	// Sends data to the address- returns how many bytes were sent, or an error code.
@@ -326,7 +353,7 @@ struct UDPSocket
 		int sizeOfOut = sizeof(outFromAddress);
 		return recvfrom(mSocket, reinterpret_cast<char*>(outData), inLength, 0, &outFromAddress, &sizeOfOut);
 	}
-	bool UDPSocket::Close() {
+	bool Close() {
 		bool error = closesocket(mSocket) == NOERROR;
 		return error;
 	}
@@ -338,30 +365,33 @@ struct UDPSocket
 	}
 
 	SOCKET mSocket;
+	struct sockaddr_in mServerAddr;
+	bool   mBroadcast;
 };
 
 struct UDPSocketUtil
 {
-	static shared_ptr<UDPSocket> Create(uint16_t inPortNum)
+	static shared_ptr<UDPSocket> CreateSocket(uint16_t portNum)
 	{
 		SOCKET s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 		if (s == INVALID_SOCKET)
 		{
-			cout << "UDPSocketUtil::Create() - error invalid socket." << endl;
+			cout << "Invalid Socket UDP" << endl;
 			return shared_ptr<UDPSocket>();
 		}
 
-		// Server Only
-		if (inPortNum != 0) {
-			struct sockaddr_in sockAddress;
-			sockAddress.sin_family = AF_INET;
-			sockAddress.sin_port = htons(inPortNum);
-			memset(sockAddress.sin_zero, 0, 8);
-			sockAddress.sin_addr.S_un.S_addr = INADDR_ANY;
-			// If the binding failed
-			if (bind(s, reinterpret_cast<sockaddr*>(&sockAddress), sizeof(sockAddress)) == SOCKET_ERROR) {
-				return shared_ptr<UDPSocket>();
-			}
+		struct sockaddr_in ownAddr;
+		ownAddr.sin_family = AF_INET;
+		ownAddr.sin_port = htons(portNum);
+		ownAddr.sin_addr.S_un.S_addr = INADDR_ANY;
+		memset(ownAddr.sin_zero, 0, 8);
+
+		int bindResult = bind(s, reinterpret_cast<const sockaddr*>(&ownAddr), 
+			sizeof(sockaddr));
+		if (bindResult == SOCKET_ERROR)
+		{
+			cout << "Sad Face. " << endl;
+			return shared_ptr<UDPSocket>();
 		}
 
 		return shared_ptr<UDPSocket>(new UDPSocket(s));
@@ -380,11 +410,20 @@ struct UDPSocketUtil
 
 struct UDPChatClient
 {
-	UDPChatClient(u_long ipAddress, u_short portNum)
+	UDPChatClient(u_long ipAddress, uint16_t portNum, bool broadcast)
 	{
+
+		mOwnSocket = UDPSocketUtil::CreateSocket( 0 );
+		
+		/* Create a server connection representation. */
+		mServerAddr.sin_family = AF_INET;
+		mServerAddr.sin_port = htons(portNum);
+		mServerAddr.sin_addr.S_un.S_addr = ipAddress;
+		memset(mServerAddr.sin_zero, 0, 8);
+
+
 		if (UDPSocketUtil::UDPStartup() != 0) { return; }
-		mSocket = UDPSocketUtil::Create(0);
-		if (mSocket.get() == nullptr) { return; }
+		if (mOwnSocket.get() == nullptr) { return; }
 		mIPAddress = ipAddress;
 		mPort = portNum;
 	}
@@ -394,78 +433,42 @@ struct UDPChatClient
 		// TODO : Functionality
 		// Option 1 - Send (char* confirmation, size)
 		// Option 2 - Receive();
+		// Connect to the server.
+
+		//mOwnSocket->SetNonBlocking(false);
+		cout << "Connected to server port: " << to_string(mPort) << endl;
+
 		char buffer[1024];
 
 		// Send out a packet
-		string sendData = "UDP MESSAGE";
-		int sendBytes = mSocket->SendTo(&sendData,sendData.size,  )
-		cout << "Client Send: " << sendData << endl;
-
-		while (true)
-		{ 
-			if (mSocket->Receive(buffer, 1024) > 0)
-			{
-				string received(buffer);
-				cout << "Client Received: " << received << endl;
-			}
-		}
-	}
-	void Send(char* inData, unsigned bytes)
-	{
-		// TODO : Manipulate the data if you need to.
-		int sendBytes = mSocket->Send(inData, bytes);
-		cout << "Client - Sent " << to_string(sendBytes) << " bytes to the server." << endl;
-	}
-	void Receive(char* outData)
-	{
-		int bytes = mSocket->Receive(outData, TCP_CHAT_BUFFER_SIZE);
-		if (bytes > 0)
+		string sendData = "UDP MESSAGE!";
+		if (false)
 		{
-			cout << "Client - Received " << bytes << " bytes from the server." << endl;
-			// TODO : Do something with the data if you need to.
+			sendData = "UDP BROADCAST MESSAGE!";
+		}
 
+		int bytesSent = 0;
+		
+		// Wrap this
+		bytesSent = mOwnSocket->SendTo(sendData.c_str(), sendData.size(),
+			*reinterpret_cast<sockaddr*>(&mServerAddr));
+
+		cout << "UDP Chat client sent: " << to_string(bytesSent) << "bytes."  << endl;
+
+		int bytesReceived = 0;
+		while (true)
+		{
+			bytesReceived = mOwnSocket->RecvFrom(buffer, UDP_PACKET_MAX_CAPACITY,
+				*reinterpret_cast<sockaddr*>(&mServerAddr));
 		}
 	}
 
-	shared_ptr<UDPSocket> mSocket;
+	shared_ptr<UDPSocket> mOwnSocket;
+	struct sockaddr_in mServerAddr;
 	u_long mIPAddress;
-	u_short mPort;
+	uint16_t mPort;
 };
 
-class IPv4Util
-{
-public:
-	/* Tested and worked. */
-	static u_long IPStringToLong(const string& ipAddress)
-	{
-		struct in_addr sa;
-		{ inet_pton(AF_INET, ipAddress.c_str(), &(sa)); }
-		return sa.S_un.S_addr;
-	}
-	/* Tested and worked. */
-	static string IPLongToString(u_long ipAddress)
-	{
-		char str[INET_ADDRSTRLEN];
-		struct sockaddr_in sa;
-		sa.sin_addr.S_un.S_addr = ipAddress;
-		{ inet_ntop(AF_INET, &(sa.sin_addr), str, INET_ADDRSTRLEN); }
-		return string(str);
-	}
-
-	static u_short PortStringToShort(const string& portNum)
-	{
-		return std::stoul(portNum.c_str(), nullptr, 10);
-	}
-
-	static void TEST()
-	{
-		string local_host = "127.0.0.1";
-		cout << "Old IP: " << local_host << endl;
-		u_long ip = IPv4Util::IPStringToLong(local_host);
-		cout << "ULong IP: " << to_string(ip) << endl;
-		cout << "New IP: " << IPv4Util::IPLongToString(ip) << endl;
-	}
-};
 
 
 
@@ -475,12 +478,14 @@ int _tmain(int argc, _TCHAR* argv[])
 	/* Test sending via TCP */
 	string local_host = "127.0.0.1";
 	u_long ip = IPv4Util::IPStringToLong(local_host);
-	u_short port = IPv4Util::PortStringToShort("4001");
+	uint16_t tcpport = IPv4Util::PortStringToShort("4001");
+	uint16_t udpport = IPv4Util::PortStringToShort("4000");
 
-	/*TCPChatClient tcpClient(ip, port);
+	/*TCPChatClient tcpClient(ip, tcpport);
 	tcpClient.Run();*/
-	
 
+	UDPChatClient udpClient(ip, udpport, false);
+	udpClient.Run();
 
 	while (true){};
 	return 0;
