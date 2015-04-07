@@ -329,6 +329,7 @@ struct PacketBuffer
 	uint32_t mBufferHead;
 
 };
+
 struct UDPSocket
 {
 	UDPSocket(SOCKET s) { mSocket = s;}
@@ -420,6 +421,18 @@ struct UDPChatClient
 		mServerAddr.sin_port = htons(portNum);
 		mServerAddr.sin_addr.S_un.S_addr = ipAddress;
 		memset(mServerAddr.sin_zero, 0, 8);
+
+		if (broadcast)
+		{
+			const char bValue = '1';
+			if (setsockopt(mOwnSocket->mSocket, SOL_SOCKET, SO_BROADCAST, 
+						   &bValue, sizeof (bValue)) == -1)
+			{
+				cout << "Failed to Broadcast" << endl;
+				return;
+			}
+		}
+	
 		if (mOwnSocket.get() == nullptr) { return; }
 		mIPAddress = ipAddress;
 		mPort = portNum;
@@ -468,18 +481,26 @@ struct UDPChatClient
 
 int _tmain(int argc, _TCHAR* argv[])
 {
+	bool broadcast = false;
 
 	/* Test sending via TCP */
 	string local_host = "127.0.0.1";
+
+	if (broadcast)
+	{
+		local_host = "127.255.255.255";
+	}
+
 	u_long ip = IPv4Util::IPStringToLong(local_host);
 	uint16_t tcpport = IPv4Util::PortStringToShort("4001");
 	uint16_t udpport = IPv4Util::PortStringToShort("4000");
 
-	/*TCPChatClient tcpClient(ip, tcpport);
-	tcpClient.Run();*/
+	TCPChatClient tcpClient(ip, tcpport);
+	tcpClient.Run();
 
-	UDPChatClient udpClient(ip, udpport, false);
-	udpClient.Run();
+	cout << "Sending to: " << local_host << endl;
+	/*UDPChatClient udpClient(ip, udpport, broadcast);
+	udpClient.Run();*/
 
 	while (true){};
 	return 0;
