@@ -412,17 +412,14 @@ struct UDPChatClient
 {
 	UDPChatClient(u_long ipAddress, uint16_t portNum, bool broadcast)
 	{
+		if (UDPSocketUtil::UDPStartup() != 0) { return; }
+		mOwnSocket = UDPSocketUtil::CreateSocket(0);
 
-		mOwnSocket = UDPSocketUtil::CreateSocket( 0 );
-		
 		/* Create a server connection representation. */
 		mServerAddr.sin_family = AF_INET;
 		mServerAddr.sin_port = htons(portNum);
 		mServerAddr.sin_addr.S_un.S_addr = ipAddress;
 		memset(mServerAddr.sin_zero, 0, 8);
-
-
-		if (UDPSocketUtil::UDPStartup() != 0) { return; }
 		if (mOwnSocket.get() == nullptr) { return; }
 		mIPAddress = ipAddress;
 		mPort = portNum;
@@ -468,9 +465,6 @@ struct UDPChatClient
 	u_long mIPAddress;
 	uint16_t mPort;
 };
-
-
-
 
 int _tmain(int argc, _TCHAR* argv[])
 {
