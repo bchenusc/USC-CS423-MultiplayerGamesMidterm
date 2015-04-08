@@ -521,7 +521,7 @@ struct UDPChatClient
 			if (bytesReceived > 0)
 			{
 				cout << "Byte received from server: " << bytesReceived << " " << buffer << endl;
-				cout << "From: " << IPv4Util::IPLongToString(mServerAddr.sin_addr.S_un.S_addr) << endl;
+				cout << "From: " << IPv4Util::IPLongToString(mServerAddr.sin_addr.S_un.S_addr) << " : " << mServerAddr.sin_port << endl;
 				return mServerAddr.sin_addr.S_un.S_addr;
 			}
 		}
@@ -636,32 +636,32 @@ struct UDPChatClient
 
 int _tmain(int argc, _TCHAR* argv[])
 {
-	bool broadcast = false;
+	bool broadcast = true;
 
 	/* Test sending via TCP */
-	string local_host = "127.0.0.1";
-
-	if (broadcast)
-	{
-		local_host = "127.255.255.255";
-	}
+	string local_host = "127.255.255.255";
 
 
 	u_long ip = IPv4Util::IPStringToLong(local_host);
 	uint16_t tcpport = IPv4Util::PortStringToShort("4001");
 	uint16_t udpport = IPv4Util::PortStringToShort("4000");
 
-	cout << "Sending to: " << local_host << endl;
+	/* Broad casting. */
+	cout << "------ PART 1 ------" << endl;
+ 	cout << "Sending to: " << local_host << endl;
 	UDPChatClient udpClient(ip, udpport, broadcast);
 	u_long part1Address = udpClient.Run();
 	
+	cout <<  endl << "------ PART 2 -------" << endl;
 	TCPChatClient tcpClient(part1Address, tcpport);
 	int size = tcpClient.Run();
+	cout << endl << " -------- PART 3 -------- " << endl;
 	cout << "Image Size is: " << size << endl;
 
+	cout << endl << "-------- Part 4 and 5 fusion ---------- " << endl;
 	udpClient.AssembleChunks(size);
 
-	while (true){};
+	while (true){}; // Here to help you read my output.
 	return 0;
 }
 
