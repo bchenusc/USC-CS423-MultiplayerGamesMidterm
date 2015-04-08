@@ -31,6 +31,7 @@ using std::to_string;
 using std::string;
 using std::cout;
 using std::endl;
+using std::cin;
 
 
 //------------ Defines ------------//
@@ -192,38 +193,58 @@ struct TCPChatClient
 		mPort = portNum;
 	}
 
-	void Run()
+	uint32_t Run()
 	{
 		// Connect to the server.
 		if (mSocket->Connect(mIPAddress, mPort) == SOCKET_ERROR)
 		{
 			cout << "Failed to connect to server." << endl;
-			return;
+			return 0;
 		}
 		cout << "Connected to server port: " << to_string(mPort) << endl;
 		// Turn off blocking.
 		if (mSocket->SetNonBlocking(false) == SOCKET_ERROR)
 		{
 			cout << "Set non blocking failed." << endl;
-			return;
+			return 0;
 		}
 		char buffer[1024];
 
 		// Send out a packet
-		string sendData = "TCP MESSAGE";
+		string sendData = "login:";
+		for (uint32_t i = 0; i < 100; ++i)
+		{
+			if (i < 10)
+				sendData.append("0");
+			sendData.append(to_string(i));
+		}
 		int sendBytes = mSocket->Send(sendData.c_str(), sendData.size());
 		cout << "Client Send: " << sendData << endl;
+
+		uint32_t password = -1; // Start from -1 because when you increment, then
+								// psw received is actually 0.
 
 		while (true)
 		{
 			// TODO : Functionality
 			// Option 1 - Send (char* confirmation, size)
-			// Option 2 - Receive(); 
-			if (mSocket->Receive(buffer, 1024) > 0)
+			// Option 2 - Receive();
+			int bytes = mSocket->Receive(buffer, 1024);
+			if (bytes > -1)
+				password++;
+			if (bytes == 3)
+				return password;
+			/*if (bytes)
 			{
-				string received(buffer);
+				//string received(buffer);
 				cout << "Client Received: " << received << endl;
-			}
+				// If yes, that means that we recieved the password.
+				++password;
+				if (receive
+				{
+					return password;
+				}
+			}*/
 		}
 	}
 	void Send(char* inData, unsigned bytes)
@@ -237,7 +258,7 @@ struct TCPChatClient
 		int bytes = mSocket->Receive(outData, TCP_CHAT_BUFFER_SIZE);
 		if (bytes > 0)
 		{
-			cout << "Client - Received " << bytes << " bytes from the server." << endl;
+			//cout << "Client - Received " << bytes << " bytes from the server." << endl;
 			// TODO : Do something with the data if you need to.
 
 		}
@@ -334,11 +355,6 @@ struct UDPSocket
 {
 	UDPSocket(SOCKET s) { mSocket = s;}
 
-	int Send(const void* inData, uint32_t length)
-	{
-		return send(mSocket, reinterpret_cast<const char*>(inData), length, 0);
-	}
-
 	int Recv(void* inData, uint32_t length)
 	{
 		return recv(mSocket, reinterpret_cast<char*>(inData), length, 0);
@@ -348,12 +364,12 @@ struct UDPSocket
 	int SendTo(const void* inData, uint32_t inLength, const sockaddr& inToAddress) {
 		return sendto(mSocket, reinterpret_cast<const char*>(inData), inLength, 0, &inToAddress, sizeof(inToAddress));
 	}
-	// Receives data up to inLength in size. Returns the number of bytes recieved, 
-	// or an error code. Returns the sender's address in outFromAddress.
+
 	int RecvFrom(void* outData, uint32_t inLength, sockaddr& outFromAddress) {
 		int sizeOfOut = sizeof(outFromAddress);
 		return recvfrom(mSocket, reinterpret_cast<char*>(outData), inLength, 0, &outFromAddress, &sizeOfOut);
 	}
+
 	bool Close() {
 		bool error = closesocket(mSocket) == NOERROR;
 		return error;
@@ -436,9 +452,15 @@ struct UDPChatClient
 		if (mOwnSocket.get() == nullptr) { return; }
 		mIPAddress = ipAddress;
 		mPort = portNum;
+		mFrameID = 0;
 	}
 
-	void Run()
+	~UDPChatClient()
+	{
+		UDPSocketUtil::UDPCleanup();
+	}
+
+	u_long Run()
 	{
 		// TODO : Functionality
 		// Option 1 - Send (char* confirmation, size)
@@ -448,15 +470,16 @@ struct UDPChatClient
 		//mOwnSocket->SetNonBlocking(false);
 		cout << "Connected to server port: " << to_string(mPort) << endl;
 
-		char buffer[1024];
+		char buffer[UDP_PACKET_MAX_CAPACITY];
 
 		// Send out a packet
-		string sendData = "UDP MESSAGE!";
+		string sendData = "where";
 		if (false)
 		{
 			sendData = "UDP BROADCAST MESSAGE!";
 		}
 
+		/* ------- SENDING -------- */
 		int bytesSent = 0;
 		
 		// Wrap this
@@ -464,20 +487,40 @@ struct UDPChatClient
 			*reinterpret_cast<sockaddr*>(&mServerAddr));
 
 		cout << "UDP Chat client sent: " << to_string(bytesSent) << "bytes."  << endl;
+		/* ------------------------ */
+
+		struct timeval tim;
+		tim.tv_sec = 5; // Seconds till confirm dropped packet.
+
+		// Clear descriptors
+		//fd_set readfds;
+
+		//FD_ZERO(&readfds);
+		//FD_SET(mOwnSocket->mSocket, &readfds);
+		
 
 		int bytesReceived = 0;
 		while (true)
 		{
+			memset(buffer, 0, UDP_PACKET_MAX_CAPACITY);
 			bytesReceived = mOwnSocket->RecvFrom(buffer, UDP_PACKET_MAX_CAPACITY,
 				*reinterpret_cast<sockaddr*>(&mServerAddr));
+			if (bytesReceived > 0)
+			{
+				cout << "Byte received from server: " << bytesReceived << " " << buffer << endl;
+				cout << "From: " << IPv4Util::IPLongToString(mServerAddr.sin_addr.S_un.S_addr) << endl;
+				return mServerAddr.sin_addr.S_un.S_addr;
+			}
 		}
 	}
 
+	uint32_t mFrameID;
 	shared_ptr<UDPSocket> mOwnSocket;
 	struct sockaddr_in mServerAddr;
 	u_long mIPAddress;
 	uint16_t mPort;
 };
+
 
 int _tmain(int argc, _TCHAR* argv[])
 {
@@ -488,19 +531,21 @@ int _tmain(int argc, _TCHAR* argv[])
 
 	if (broadcast)
 	{
-		local_host = "127.255.255.255";
+		//local_host = "127.255.255.255";
 	}
+
 
 	u_long ip = IPv4Util::IPStringToLong(local_host);
 	uint16_t tcpport = IPv4Util::PortStringToShort("4001");
 	uint16_t udpport = IPv4Util::PortStringToShort("4000");
 
-	TCPChatClient tcpClient(ip, tcpport);
-	tcpClient.Run();
-
 	cout << "Sending to: " << local_host << endl;
-	/*UDPChatClient udpClient(ip, udpport, broadcast);
-	udpClient.Run();*/
+	UDPChatClient udpClient(ip, udpport, broadcast);
+	u_long part1Address = udpClient.Run();
+	
+	TCPChatClient tcpClient(part1Address, tcpport);
+	uint32_t password = tcpClient.Run();
+	cout << "The Server Password is: " << password << endl;
 
 	while (true){};
 	return 0;
