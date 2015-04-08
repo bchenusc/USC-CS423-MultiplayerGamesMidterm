@@ -540,7 +540,7 @@ struct UDPChatClient
 		if (res.is_open())
 		{
 			cout << "Chunks: " << chunks << endl;
-			for (int i = 0; i < chunks; ++i)
+			for (int i = 1; i <= chunks; ++i)
 			{
 				// Send out a packet
 				sendData = "";
@@ -590,7 +590,6 @@ struct UDPChatClient
 						{
 							res.write(buffer + 9, imageSize);
 							res.close();
-							cout << "Buffer " << buffer << " image size" << endl;
 							cout << "Received : " << imageSize << " Frame: " << mFrameID << endl;
 							cout << "Done" << endl;
 							return;
