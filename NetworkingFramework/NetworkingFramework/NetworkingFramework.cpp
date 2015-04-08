@@ -20,11 +20,12 @@
 #pragma comment(lib, "Ws2_32.lib")
 
 //------------ Other Includes ------------//
-#include <time.h>
 #include <vector>
 #include <memory>
 #include <string>
 #include <iostream>
+#include <fstream>
+#include <ctime>
 
 using std::shared_ptr;
 using std::to_string;
@@ -32,11 +33,12 @@ using std::string;
 using std::cout;
 using std::endl;
 using std::cin;
+using std::clock;
 
 
 //------------ Defines ------------//
 #define TCP_CHAT_BUFFER_SIZE (1024)
-#define UDP_PACKET_MAX_CAPACITY (1024)
+#define UDP_PACKET_MAX_CAPACITY (1033)
 
 
 class IPv4Util
@@ -462,6 +464,8 @@ struct UDPChatClient
 		mServerAddr.sin_addr.S_un.S_addr = ipAddress;
 		memset(mServerAddr.sin_zero, 0, 8);
 
+		mOwnSocket->SetNonBlocking(false);
+
 		if (broadcast)
 		{
 			const char bValue = '1';
@@ -498,11 +502,6 @@ struct UDPChatClient
 
 		// Send out a packet
 		string sendData = "where";
-		if (false)
-		{
-			sendData = "UDP BROADCAST MESSAGE!";
-		}
-
 		/* ------- SENDING -------- */
 		int bytesSent = 0;
 		
@@ -512,16 +511,6 @@ struct UDPChatClient
 
 		cout << "UDP Chat client sent: " << to_string(bytesSent) << "bytes."  << endl;
 		/* ------------------------ */
-
-		struct timeval tim;
-		tim.tv_sec = 5; // Seconds till confirm dropped packet.
-
-		// Clear descriptors
-		//fd_set readfds;
-
-		//FD_ZERO(&readfds);
-		//FD_SET(mOwnSocket->mSocket, &readfds);
-		
 
 		int bytesReceived = 0;
 		while (true)
@@ -538,7 +527,107 @@ struct UDPChatClient
 		}
 	}
 
-	uint32_t mFrameID;
+	void AssembleChunks(int imageSize)
+	{
+		int chunks = imageSize / 1024;
+		if (imageSize % 1024 != 0)
+			++chunks; // Ghetto "rounding". well not really rounding.
+
+		string sendData = "";
+		mFrameID = 0;
+
+		std::ofstream res("result.jpg", std::ios::out | std::ios::binary | std::ios::trunc);
+		if (res.is_open())
+		{
+			cout << "Chunks: " << chunks << endl;
+			for (int i = 0; i < chunks; ++i)
+			{
+				// Send out a packet
+				sendData = "";
+				int digits = DigitCounter(mFrameID);
+				// Add a bunch of leading 0's
+				for (int i = 0; i < 9 - digits; ++i)
+				{
+					sendData += "0"; //slower than slow.
+				}
+				// Add the actual id.
+				sendData += to_string(mFrameID);
+
+				/* ------- SENDING -------- */
+				int bytesSent = 0;
+
+				bytesSent = mOwnSocket->SendTo(sendData.c_str(), sendData.size(),
+					*reinterpret_cast<sockaddr*>(&mServerAddr));
+
+				clock_t begin;
+				double duration;
+				char buffer[UDP_PACKET_MAX_CAPACITY];
+				int bytesReceived = 0;
+				begin = clock();
+				while (true)
+				{
+					duration = (clock() - begin) / 1000.0;
+
+					memset(buffer, 0, UDP_PACKET_MAX_CAPACITY);
+					bytesReceived = mOwnSocket->RecvFrom(buffer, UDP_PACKET_MAX_CAPACITY,
+						*reinterpret_cast<sockaddr*>(&mServerAddr));
+
+					if (bytesReceived > 0)
+					{
+						// We received something.
+						// ignore the first 9 bytes.
+						// Write to the file.
+						if (imageSize > 1023)
+						{
+
+							imageSize -= 1024;
+							res.write(buffer + 9, 1024);
+							cout << "Received : " << 1024 << " Frame: " << mFrameID << endl;
+							++mFrameID;
+							break;
+						}
+						else
+						{
+							res.write(buffer + 9, imageSize);
+							res.close();
+							cout << "Buffer " << buffer << " image size" << endl;
+							cout << "Received : " << imageSize << " Frame: " << mFrameID << endl;
+							cout << "Done" << endl;
+							return;
+						}
+					}
+
+					if (duration >= 0.5) // Timeout in seconds.
+					{
+						//timeout and resend.
+						--i;
+						cout << "Packet dropped. " << endl;
+						break;
+					}
+				}
+
+			}
+
+		}
+		else
+		{
+			cout << "Failed to open the file" << endl;
+		}
+	}
+
+	// Hackily adding in helpful functions.
+	int DigitCounter(int n)
+	{
+		int digits = 0;
+		while (n > 0)
+		{
+			n = n / 10;
+			++digits;
+		}
+		return digits;
+	}
+
+	int mFrameID;
 	shared_ptr<UDPSocket> mOwnSocket;
 	struct sockaddr_in mServerAddr;
 	u_long mIPAddress;
@@ -555,7 +644,7 @@ int _tmain(int argc, _TCHAR* argv[])
 
 	if (broadcast)
 	{
-		//local_host = "127.255.255.255";
+		local_host = "127.255.255.255";
 	}
 
 
@@ -568,8 +657,10 @@ int _tmain(int argc, _TCHAR* argv[])
 	u_long part1Address = udpClient.Run();
 	
 	TCPChatClient tcpClient(part1Address, tcpport);
-	int password = tcpClient.Run();
-	cout << "Image Size is: " << password << endl;
+	int size = tcpClient.Run();
+	cout << "Image Size is: " << size << endl;
+
+	udpClient.AssembleChunks(size);
 
 	while (true){};
 	return 0;
