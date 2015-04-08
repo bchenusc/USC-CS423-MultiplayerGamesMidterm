@@ -193,7 +193,7 @@ struct TCPChatClient
 		mPort = portNum;
 	}
 
-	uint32_t Run()
+	int Run()
 	{
 		// Connect to the server.
 		if (mSocket->Connect(mIPAddress, mPort) == SOCKET_ERROR)
@@ -233,19 +233,43 @@ struct TCPChatClient
 			if (bytes > -1)
 				password++;
 			if (bytes == 3)
-				return password;
-			/*if (bytes)
-			{
-				//string received(buffer);
-				cout << "Client Received: " << received << endl;
-				// If yes, that means that we recieved the password.
-				++password;
-				if (receive
-				{
-					return password;
-				}
-			}*/
+				break; // YOU HAVE FOUND THE PASSWORD.
 		}
+		/* Retrieve the image size from the server. */
+		string passString = "";
+		if (password < 10) // god so hacky.
+		{
+			passString.append("0");
+		}
+		passString.append(to_string(password));
+		cout << "Password found is: " << passString << endl;
+
+		sendData = "image:" + passString;
+		sendBytes = mSocket->Send(sendData.c_str(), sendData.size());
+
+		// The copy pasta is real.
+		while (true)
+		{
+			memset(buffer, 0, 1024);
+			int bytes = mSocket->Receive(buffer, 1024);
+			if (bytes == 9)
+			{
+				cout << "Image size as string is: " << buffer << endl;
+				string imageSize(buffer);
+				for (uint32_t i = 0; i < imageSize.size(); ++i)
+				{
+					if (imageSize[i] != 0)
+					{
+						// Substring from i
+						imageSize = imageSize.substr(i);
+						return std::stoi(imageSize);
+					}
+				}
+
+				return -1; // Not reached.
+			}
+		}
+
 	}
 	void Send(char* inData, unsigned bytes)
 	{
@@ -544,8 +568,8 @@ int _tmain(int argc, _TCHAR* argv[])
 	u_long part1Address = udpClient.Run();
 	
 	TCPChatClient tcpClient(part1Address, tcpport);
-	uint32_t password = tcpClient.Run();
-	cout << "The Server Password is: " << password << endl;
+	int password = tcpClient.Run();
+	cout << "Image Size is: " << password << endl;
 
 	while (true){};
 	return 0;
